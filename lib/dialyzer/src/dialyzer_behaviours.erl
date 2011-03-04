@@ -30,11 +30,14 @@
 
 -module(dialyzer_behaviours).
 
--export([check_callbacks/4, get_behaviours/2, get_behaviour_apis/1,
-	 translate_behaviour_api_call/5, translatable_behaviours/1,
-	 translate_callgraph/3]).
+-export([new_behaviour_api_dict/0, new_callback_ref_list/0,
+         check_callbacks/4, get_behaviours/2, get_behaviour_apis/1,
+	 get_registering_apis/1, translate_behaviour_api_call/6,
+         translatable_behaviours/0, translate_callgraph/1]).
 
--export_type([behaviour/0, behaviour_api_dict/0]).
+-export_type([behaviour/0, behaviour_api_dict/0, callback_ref_list/0]).
+
+-define(TRANSLATABLE_BEHAVIOURS, [gen_server]).
 
 %%--------------------------------------------------------------------
 
@@ -44,12 +47,19 @@
 
 -type behaviour() :: atom().
 
+-type callback_ref_list() :: [{atom(), module()}].
+
 -record(state, {plt        :: dialyzer_plt:plt(),
 		codeserver :: dialyzer_codeserver:codeserver(),
 		filename   :: file:filename(),
 		behlines   :: [{behaviour(), non_neg_integer()}]}).
 
 %%--------------------------------------------------------------------
+
+-spec new_callback_ref_list() -> callback_ref_list().
+
+new_callback_ref_list() ->
+  [].
 
 -spec get_behaviours([module()], dialyzer_codeserver:codeserver()) ->
   {[behaviour()], [behaviour()]}.
@@ -75,63 +85,169 @@ check_callbacks(Module, Attrs, Plt, Codeserver) ->
       [add_tag_file_line(Module, W, State) || W <- Warnings]
   end.
 
--spec translatable_behaviours(cerl:c_module()) -> behaviour_api_dict().
+-spec translatable_behaviours() -> behaviour_api_dict().
 
-translatable_behaviours(Tree) ->
-  Attrs = cerl:module_attrs(Tree),
-  {Behaviours, _BehLines} = get_behaviours(Attrs),
-  [{B, Calls} || B <- Behaviours, (Calls = behaviour_api_calls(B)) =/= []].
+translatable_behaviours() ->
+  [{B, Calls} || B <- ?TRANSLATABLE_BEHAVIOURS,
+		 (Calls = behaviour_api_calls(B)) =/= []].
 
 -spec get_behaviour_apis([behaviour()]) -> [mfa()].
 
 get_behaviour_apis(Behaviours) ->
   get_behaviour_apis(Behaviours, []).
 
--spec translate_behaviour_api_call(dialyzer_races:mfa_or_funlbl(),
-				   [erl_types:erl_type()],
+-spec translate_behaviour_api_call(mfa_or_funlbl(), [erl_types:erl_type()],
 				   [dialyzer_races:core_vars()],
-				   module(),
-				   behaviour_api_dict()) ->
-				      {dialyzer_races:mfa_or_funlbl(),
-				       [erl_types:erl_type()],
-				       [dialyzer_races:core_vars()]}
+				   behaviour_api_dict(),
+                                   callback_ref_list(),
+				   mfa_or_funlbl()) ->
+				      {{mfa_or_funlbl(), [erl_types:erl_type()],
+					[dialyzer_races:core_vars()]},
+				       callback_ref_list(),
+				       dialyzer_callgraph:callgraph_edge()}
 					| 'plain_call'.
 
-translate_behaviour_api_call(_Fun, _ArgTypes, _Args, _Module, []) ->
+translate_behaviour_api_call(_Fun, _ArgTypes, _Args, [], _CallbackRefList,
+			     _CurFun) ->
   plain_call;
 translate_behaviour_api_call({Module, Fun, Arity}, ArgTypes, Args,
-			     CallbackModule, BehApiInfo) ->
+			     BehApiInfo, CallbackRefList, CurFun) ->
+  CA = CallbackRefList,
+  Query =
   case lists:keyfind(Module, 1, BehApiInfo) of
     false -> plain_call;
     {Module, Calls} ->
       case lists:keyfind({Fun, Arity}, 1, Calls) of
 	false -> plain_call;
-	{{Fun, Arity}, {CFun, CArity, COrder}} ->
-	  {{CallbackModule, CFun, CArity},
-	   [nth_or_0(N, ArgTypes, erl_types:t_any()) || N <-COrder],
-	   [nth_or_0(N, Args, bypassed) || N <-COrder]}
+	{{Fun, Arity}, TranslationInfo, Directive} ->
+	  TI = TranslationInfo,
+	  case Directive of
+	    {create, no, _} -> plain_call;
+	    {create,  N, M} ->
+	      CMCandidateCerl = nth_or_0(M, Args, foo),
+	      CMCandidateType = nth_or_0(M, ArgTypes, foo),
+	      case extract_atom(CMCandidateCerl, CMCandidateType) of
+		{ok, CallbackModule} ->
+		  CM = CallbackModule,
+		  NameCandidateCerl = nth_or_0(N, Args, foo),
+		  NameCandidateType = nth_or_0(N, ArgTypes, foo),
+		  case extract_atom_or_tuple(NameCandidateCerl,
+					     NameCandidateType) of
+		    {ok, Name} when is_atom(Name)->
+		      {CM, TI, add_reference({Name,CM},CA)};
+		    {ok, {_,Name}} when is_atom(Name) ->
+		      {CM, TI, add_reference({Name,CM},CA)};
+		    _ -> plain_call
+		  end;
+		error -> plain_call
+	      end;
+	    {refer, N} ->
+	      case CA of
+		[] -> plain_call;
+		_ ->
+		  NameCandidateCerl = nth_or_0(N, Args, foo),
+		  NameCandidateType = nth_or_0(N, ArgTypes, foo),
+		  case extract_atom(NameCandidateCerl, NameCandidateType) of
+		    {ok, Name} ->
+		      case lists:keyfind(Name,1,CA) of
+			{_,CM} -> {CM, TI, CA};
+			false  -> plain_call
+		      end;
+		    _ -> plain_call
+		  end
+	      end
+	  end
       end
+  end,
+  case Query of
+    plain_call -> Query;
+    {Callback, {CFun, CArity, COrder}, NewModuleRefs} ->
+      Call = {{Callback, CFun, CArity},
+	      [nth_or_0(N, ArgTypes, erl_types:t_any()) || N <-COrder],
+	      [nth_or_0(N, Args, bypassed) || N <-COrder]},
+      TranslationEdge = {CurFun,{Callback,CFun,CArity}},
+      {Call, NewModuleRefs, TranslationEdge}
   end;
-translate_behaviour_api_call(_Fun, _ArgTypes, _Args, _Module, _BehApiInfo) ->
+translate_behaviour_api_call(_Fun, _ArgTypes, _Args, _BehApiInfo,
+			     _Translations, _CurFun) ->
   plain_call.
 
--spec translate_callgraph(behaviour_api_dict(), atom(),
-			  dialyzer_callgraph:callgraph()) ->
+extract_atom(Cerl, Type) ->
+  case cerl:is_literal(Cerl) of
+    true ->
+      case cerl:concrete(Cerl) of
+	Atom when is_atom(Atom) -> {ok, Atom};
+	_ -> error
+      end;
+    false ->
+      case erl_types:t_is_atom(Type) of
+	true ->
+	  case erl_types:t_atom_vals(Type) of
+	    'unknown' -> error;
+	    [AtomVal] -> {ok, AtomVal};
+	    _         -> error
+	  end;
+	false -> error
+      end
+  end.
+
+extract_atom_or_tuple(Cerl, Type) ->
+  case cerl:is_literal(Cerl) of
+    true ->
+      case cerl:concrete(Cerl) of
+	Atom when is_atom(Atom) -> {ok, Atom};
+	Tuple when is_tuple(Tuple) -> {ok, Tuple};
+	_ -> error
+      end;
+    false ->
+      case erl_types:t_is_atom(Type) of
+	true ->
+	  case erl_types:t_atom_vals(Type) of
+	    'unknown' -> error;
+	    [AtomVal] -> {ok, AtomVal};
+	    _         -> error
+	  end;
+	false ->
+	  case (erl_types:t_is_tuple(Type) andalso
+		not erl_types:t_is_tuple_set(Type)) of
+	    true ->
+	      Args = erl_types:t_tuple_args(Type),
+	      process_tuple_args(Args);
+	    false -> error
+	  end
+      end
+  end.
+
+process_tuple_args(Args) ->
+  process_tuple_args(Args, {}).
+
+process_tuple_args([], Acc) ->
+  {ok, Acc};
+process_tuple_args([Type| Rest], Acc) ->
+  case erl_types:t_is_atom(Type) of
+    true ->
+      case erl_types:t_atom_vals(Type) of
+	'unknown' -> error;
+	[AtomVal] -> process_tuple_args(Rest,
+					erlang:append_element(Acc, AtomVal));
+	_         -> error
+      end;
+    false ->
+      error
+  end.
+
+add_reference({Name,CM},CA) ->
+  case lists:member({Name,CM},CA) of
+    true  -> CA;
+    false -> [{Name,CM}|CA]
+  end.
+
+-spec translate_callgraph(dialyzer_callgraph:callgraph()) ->
 			     dialyzer_callgraph:callgraph().
 
-translate_callgraph([{Behaviour,_}|Behaviours], Module, Callgraph) ->
-  UsedCalls = [Call || {_From, {M, _F, _A}} = Call <-
-			 dialyzer_callgraph:get_behaviour_api_calls(Callgraph),
-		       M =:= Behaviour],
-  Calls = [{{Behaviour, API, Arity}, Callback} ||
-	    {{API, Arity}, Callback} <- behaviour_api_calls(Behaviour)],
-  DirectCalls = [{From, {Module, Fun, Arity}} ||
-		  {From, To} <- UsedCalls,{API, {Fun, Arity, _Ord}} <- Calls,
-		  To =:= API],
-  NewCallgraph = dialyzer_callgraph:add_edges(DirectCalls, Callgraph),
-  translate_callgraph(Behaviours, Module, NewCallgraph);
-translate_callgraph([], _Module, Callgraph) ->
-  Callgraph.
+translate_callgraph(Callgraph) ->
+  DirectCalls = dialyzer_callgraph:get_translations(Callgraph),
+  dialyzer_callgraph:add_behaviour_edges(DirectCalls, Callgraph).
 
 %%--------------------------------------------------------------------
 
@@ -313,7 +429,7 @@ get_behaviour_apis([], Acc) ->
   Acc;
 get_behaviour_apis([Behaviour | Rest], Acc) ->
   MFAs = [{Behaviour, Fun, Arity} ||
-	   {{Fun, Arity}, _} <- behaviour_api_calls(Behaviour)],
+	   {{Fun, Arity}, _, _} <- behaviour_api_calls(Behaviour)],
   get_behaviour_apis(Rest, MFAs ++ Acc).
 
 %------------------------------------------------------------------------------
@@ -324,27 +440,49 @@ nth_or_0(N, List, _Zero) ->
   lists:nth(N, List).
 
 %------------------------------------------------------------------------------
+-spec get_registering_apis(behaviour_api_dict()) -> [mfa()].
 
+get_registering_apis(BehApiDict) ->
+  get_registering_apis(BehApiDict, []).
+
+get_registering_apis([{Behaviour, APIInfo}|Rest], Acc) ->
+  NewRegAPIs = [{Behaviour, Fun, Arity} ||
+		 {{Fun, Arity}, _, {create, N, _}} <- APIInfo,
+		 is_integer(N)],
+  get_registering_apis(Rest, NewRegAPIs ++ Acc);
+get_registering_apis([], Acc) -> Acc.
+
+%------------------------------------------------------------------------------
 -type behaviour_api_dict()::[{behaviour(), behaviour_api_info()}].
--type behaviour_api_info()::[{original_fun(), replacement_fun()}].
+-type behaviour_api_info()::[{original_fun(), replacement_fun(), directive()}].
 -type original_fun()::{atom(), arity()}.
 -type replacement_fun()::{atom(), arity(), arg_list()}.
--type arg_list()::[byte()].
+-type directive()::{'create', name_arg(), callback_module_arg()} |
+		   {'refer', name_arg()}.
+-type arg_list()::[original_fun_arg()].
+-type name_arg()::'no' | original_fun_arg().
+-type callback_module_arg()::original_fun_arg().
+-type original_fun_arg()::byte().
+
+-spec new_behaviour_api_dict() -> behaviour_api_dict().
+
+new_behaviour_api_dict() ->
+  [].
 
 -spec behaviour_api_calls(behaviour()) -> behaviour_api_info().
 
 behaviour_api_calls(gen_server) ->
-  [{{start_link, 3}, {init, 1, [2]}},
-   {{start_link, 4}, {init, 1, [3]}},
-   {{start, 3}, {init, 1, [2]}},
-   {{start, 4}, {init, 1, [3]}},
-   {{call, 2}, {handle_call, 3, [2, 0, 0]}},
-   {{call, 3}, {handle_call, 3, [2, 0, 0]}},
-   {{multi_call, 2}, {handle_call, 3, [2, 0, 0]}},
-   {{multi_call, 3}, {handle_call, 3, [3, 0, 0]}},
-   {{multi_call, 4}, {handle_call, 3, [3, 0, 0]}},
-   {{cast, 2}, {handle_cast, 2, [2, 0]}},
-   {{abcast, 2}, {handle_cast, 2, [2, 0]}},
-   {{abcast, 3}, {handle_cast, 2, [3, 0]}}];
+  [{{start_link, 3}, {init, 1, [2]}, {create, no, 1}},
+   {{start_link, 4}, {init, 1, [3]}, {create, 1, 2}},
+   {{start, 3}, {init, 1, [2]}, {create, no, 1}},
+   {{start, 4}, {init, 1, [3]}, {create, 1, 2}},
+   {{call, 2}, {handle_call, 3, [2, 0, 0]}, {refer, 1}},
+   {{call, 3}, {handle_call, 3, [2, 0, 0]}, {refer, 1}},
+   {{multi_call, 2}, {handle_call, 3, [2, 0, 0]}, {refer, 1}},
+   {{multi_call, 3}, {handle_call, 3, [3, 0, 0]}, {refer, 2}},
+   {{multi_call, 4}, {handle_call, 3, [3, 0, 0]}, {refer, 2}},
+   {{cast, 2}, {handle_cast, 2, [2, 0]}, {refer, 1}},
+   {{abcast, 2}, {handle_cast, 2, [2, 0]}, {refer, 1}},
+   {{abcast, 3}, {handle_cast, 2, [3, 0]}, {refer, 2}}];
 behaviour_api_calls(_Other) ->
   [].
