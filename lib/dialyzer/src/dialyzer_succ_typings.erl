@@ -44,6 +44,14 @@
 -define(debug(X__, Y__), ok).
 -endif.
 
+%%-define(MESSAGES, true).
+
+-ifdef(MESSAGES).
+-define(messages(X__), []).
+-else.
+-define(messages(X__), X__).
+-endif.
+
 -define(TYPE_LIMIT, 4).
 
 %%--------------------------------------------------------------------
@@ -111,16 +119,21 @@ get_refined_success_typings(State) ->
 
 get_warnings(Callgraph, Plt, DocPlt, Codeserver,
 	     NoWarnUnused, Parent, BehavioursChk) ->
-  InitState = #st{callgraph = Callgraph, codeserver = Codeserver,
+  Callgraph1 =
+    if BehavioursChk ->
+	dialyzer_callgraph:put_behaviour_translation(true, Callgraph);
+       true ->
+	dialyzer_callgraph:put_behaviour_translation(false, Callgraph)
+    end,
+  InitState = #st{callgraph = Callgraph1, codeserver = Codeserver,
 		  no_warn_unused = NoWarnUnused, parent = Parent, plt = Plt},
   NewState = get_refined_success_typings(InitState),
   Mods = dialyzer_callgraph:modules(NewState#st.callgraph),
   CWarns = dialyzer_contracts:get_invalid_contract_warnings(Mods, Codeserver,
 							    NewState#st.plt),
-  get_warnings_from_modules(Mods, NewState, DocPlt, BehavioursChk, CWarns).
+  get_warnings_from_modules(Mods, NewState, DocPlt, CWarns).
 
-get_warnings_from_modules([M|Ms], State, DocPlt,
-			  BehavioursChk, Acc) when is_atom(M) ->
+get_warnings_from_modules([M|Ms], State, DocPlt, Acc) when is_atom(M) ->
   send_log(State#st.parent, io_lib:format("Getting warnings for ~w\n", [M])),
   #st{callgraph = Callgraph, codeserver = Codeserver,
       no_warn_unused = NoWarnUnused, plt = Plt} = State,
@@ -129,26 +142,35 @@ get_warnings_from_modules([M|Ms], State, DocPlt,
   Contracts = dialyzer_codeserver:lookup_mod_contracts(M, Codeserver),
   AllFuns = collect_fun_info([ModCode]),
   %% Check if there are contracts for functions that do not exist
-  Warnings1 = 
+  _Warnings1 =
     dialyzer_contracts:contracts_without_fun(Contracts, AllFuns, Callgraph),
-  {RawWarnings2, FunTypes, RaceCode, PublicTables, NamedTables} =
-    dialyzer_dataflow:get_warnings(ModCode, Plt, Callgraph, Records, NoWarnUnused),
-  {NewAcc, Warnings2} = postprocess_dataflow_warns(RawWarnings2, State, Acc),
+  {RawWarnings2, FunTypes, PublicTables, NamedTables, DLs, Msgs, Translations} =
+    dialyzer_dataflow:get_warnings(ModCode, Plt, Callgraph, Records,
+                                   NoWarnUnused),
+  {_NewAcc, _Warnings2} = postprocess_dataflow_warns(RawWarnings2, State, Acc),
   Attrs = cerl:module_attrs(ModCode),
-  Warnings3 = if BehavioursChk ->
-		  dialyzer_behaviours:check_callbacks(M, Attrs,
-						      Plt, Codeserver);
-		 true -> []
-	      end,
+  _Warnings3  =
+    case dialyzer_callgraph:get_behaviour_translation(Callgraph) of
+      true  -> dialyzer_behaviours:check_callbacks(M, Attrs, Plt, Codeserver);
+      false -> []
+    end,
   NewDocPlt = insert_into_doc_plt(FunTypes, Callgraph, DocPlt),
   NewCallgraph =
-    dialyzer_callgraph:renew_race_info(Callgraph, RaceCode, PublicTables,
-                                       NamedTables),
+    dialyzer_callgraph:renew_heisen_info(Callgraph, PublicTables,
+                                         NamedTables, DLs, Msgs,
+					 Translations),
   State1 = st__renew_state_calls(NewCallgraph, State),
-  get_warnings_from_modules(Ms, State1, NewDocPlt, BehavioursChk,
-			    [Warnings1, Warnings2, Warnings3|NewAcc]);
-get_warnings_from_modules([], #st{plt = Plt}, DocPlt, _, Acc) ->
-  {lists:flatten(Acc), Plt, DocPlt}.
+  get_warnings_from_modules(Ms, State1, NewDocPlt,
+                            ?messages([_Warnings1, _Warnings2, _Warnings3|
+                                       _NewAcc]));
+get_warnings_from_modules([], #st{callgraph = Callgraph, plt = Plt},
+                          DocPlt, Acc) ->
+  Msgs = dialyzer_callgraph:get_msgs(Callgraph),
+  MsgWarns1 = dialyzer_messages:get_warnings(Msgs),
+  MsgWarns2 = dialyzer_messages:add_more_warnings(MsgWarns1, Msgs),
+  MsgWarns3 = dialyzer_messages:filter_msg_warns(MsgWarns2, Msgs),
+  MsgWarns4 = dialyzer_messages:prioritize_msg_warns(MsgWarns3),
+  {MsgWarns4 ++ lists:flatten(Acc), Plt, DocPlt}.
 
 postprocess_dataflow_warns(RawWarnings, State, WarnAcc) ->
   postprocess_dataflow_warns(RawWarnings, State, WarnAcc, []).
@@ -212,11 +234,12 @@ refine_one_module(M, State) ->
   AllFuns = collect_fun_info([ModCode]),
   FunTypes = get_fun_types_from_plt(AllFuns, State),
   Records = dialyzer_codeserver:lookup_mod_records(M, CodeServer),
-  {NewFunTypes, RaceCode, PublicTables, NamedTables} =
+  {NewFunTypes, PublicTables, NamedTables, DLs, Msgs, Translations} =
     dialyzer_dataflow:get_fun_types(ModCode, PLT, Callgraph, Records),
   NewCallgraph =
-    dialyzer_callgraph:renew_race_info(Callgraph, RaceCode, PublicTables,
-                                       NamedTables),
+    dialyzer_callgraph:renew_heisen_info(Callgraph, PublicTables,
+                                         NamedTables, DLs, Msgs,
+					 Translations),
   case reached_fixpoint(FunTypes, NewFunTypes) of
     true ->
       State1 = st__renew_state_calls(NewCallgraph, State),
