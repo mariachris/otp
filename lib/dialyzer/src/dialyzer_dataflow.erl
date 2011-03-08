@@ -348,10 +348,13 @@ analyze_loop(#state{callgraph = Callgraph, races = Races} = State) ->
 	      Body = cerl:fun_body(Fun),
               FunLabel = get_label(Fun),
               RaceDetection = dialyzer_callgraph:get_race_detection(Callgraph),
+              DLDetection =
+                dialyzer_callgraph:get_deadlock_detection(Callgraph),
               MsgAnalysis = dialyzer_callgraph:get_msg_analysis(Callgraph),
               HeisenAnal = dialyzer_races:get_heisen_anal(Races),
               NewState3 =
-                case (RaceDetection orelse MsgAnalysis) andalso HeisenAnal of
+                case (RaceDetection orelse DLDetection orelse MsgAnalysis)
+                  andalso HeisenAnal of
                   true ->
                     NewState2 = state__renew_curr_fun(
                       state__lookup_name(FunLabel, NewState1), FunLabel,
