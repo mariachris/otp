@@ -91,21 +91,12 @@ deadlock(State) ->
 
 warn_about_cycles([], _Digraph, State) ->
   State;
-warn_about_cycles([#dl{mfa2 = MFA} = Tag|Tags] = L, Digraph, State) ->
+warn_about_cycles([#dl{mfa2 = MFA} = Tag|Tags], Digraph, State) ->
   {NewTags, NewState} =
     case digraph:get_cycle(Digraph, MFA) of
       false -> {Tags, State};
-      [MFA|SyncMFAs] ->
-        SyncCalls = [C || T <- SyncMFAs -- [MFA],
-                          (C = lists:keyfind(T, 3, L)) =/= false],
-        Warn = get_dl_warn(Tag, SyncCalls),
-%%         Tags1 = Tags -- SyncCalls,
-%%         Callgraph = dialyzer_dataflow:state__get_callgraph(State),
-%%         Callgraph1 = dialyzer_callgraph:put_deadlocks(Tags1, Callgraph),
-%%         State1 = dialyzer_dataflow:state__put_callgraph(Callgraph1, State),
-%%         State2 = dialyzer_dataflow:state__add_warning(Warn, State1),
-%%         {Tags1, State2}
-        {Tags, dialyzer_dataflow:state__add_warning(Warn, State)}
+      [MFA|_SyncMFAs] ->
+        {Tags, dialyzer_dataflow:state__add_warning(get_dl_warn(Tag), State)}
     end,
   warn_about_cycles(NewTags, Digraph, NewState).
 
@@ -115,16 +106,12 @@ warn_about_cycles([#dl{mfa2 = MFA} = Tag|Tags] = L, Digraph, State) ->
 %%%
 %%% ===========================================================================
 
-state__renew_tags(#dl{mfa2 = MFA} = Tag, State) ->
+state__renew_tags(Tag, State) ->
   Callgraph = dialyzer_dataflow:state__get_callgraph(State),
   Tags = dialyzer_callgraph:get_deadlocks(Callgraph),
-  case lists:keymember(MFA, 3, Tags) of
-    true -> State;
-    false ->
-      NewTags = [Tag|Tags],
-      NewCallgraph = dialyzer_callgraph:put_deadlocks(NewTags, Callgraph),
-      dialyzer_dataflow:state__put_callgraph(NewCallgraph, State)
-  end.
+  NewTags = [Tag|Tags],
+  NewCallgraph = dialyzer_callgraph:put_deadlocks(NewTags, Callgraph),
+  dialyzer_dataflow:state__put_callgraph(NewCallgraph, State).
 
 %%% ===========================================================================
 %%%
@@ -132,43 +119,8 @@ state__renew_tags(#dl{mfa2 = MFA} = Tag, State) ->
 %%%
 %%% ===========================================================================
 
-get_dl_warn(#dl{mfa1 = MFA,
-                args = Args,
-                arg_types = ArgTypes,
-                state = CleanState,
-                file_line = FileLine},
-            SyncCalls) ->
+get_dl_warn(#dl{mfa1 = MFA, args = Args, arg_types = ArgTypes,
+                state = CleanState, file_line = FileLine}) ->
   {M, F, _A} = MFA,
   Arguments = dialyzer_dataflow:format_args(Args, ArgTypes, CleanState),
-  {?WARN_DEADLOCK, FileLine,
-   {deadlock, [M, F, Arguments,
-               get_reason(lists:keysort(7, SyncCalls))]}}.
-
-get_reason([]) ->
-  "will result in a deadlock since it forms a circular "
-  "sequence of synchronous calls with itself";
-get_reason(SyncCalls) ->
-  get_reason(SyncCalls, "will result in a deadlock since it forms a circular "
-                        "sequence of synchronous calls with the calls ").
-
-get_reason([#dl{mfa1 = MFA, args = Args, arg_types = ArgTypes,
-                state = CleanState, file_line = {File, Line}}|T],
-           Reason) ->
-  {M, F, _A} = MFA,
-  R =
-    Reason ++
-    case M of
-      gen_server ->
-        case F of
-          call -> "gen_server:call"
-        end
-    end ++
-    dialyzer_dataflow:format_args(Args, ArgTypes, CleanState) ++
-    " in " ++
-    filename:basename(File) ++
-    " on line " ++
-    lists:flatten(io_lib:write(Line)),
-  case T of
-    [] -> R;
-    _ -> get_reason(T, R ++ ", ")
-  end.
+  {?WARN_DEADLOCK, FileLine, {deadlock, [M, F, Arguments]}}.
