@@ -2877,10 +2877,6 @@ translate(InpFun, InpArgTypes, InpArgs, InpState, CurrFun) ->
     {true, Res} -> Res;
     false -> {InpFun, InpArgTypes, InpArgs, InpState};
     other ->
-
-      %% EXPERIMENTAL: Turn a behaviour's API call into a call to the
-      %%               respective callback module's function.
-
       BehApiDict = dialyzer_dataflow:state__get_behaviour_api_dict(InpState),
       CallbackRefList = dialyzer_dataflow:state__get_callback_ref_list(InpState),
       case dialyzer_behaviours:translate_behaviour_api_call(InpFun, InpArgTypes,

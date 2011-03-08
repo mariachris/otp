@@ -312,10 +312,6 @@ analyze_module(Tree, Plt, Callgraph, Records, GetWarnings) ->
     true ->
       State3 = state__set_warning_mode(State2),
       State4 = analyze_loop(State3),
-
-      %% EXPERIMENTAL: Turn all behaviour API calls into calls to the
-      %%               respective callback module's functions.
-
       TempCG = dialyzer_behaviours:translate_callgraph(State4#state.callgraph),
       St = dialyzer_messages:msg(dialyzer_deadlocks:deadlock(
               dialyzer_races:race(State4#state{callgraph = TempCG}))),
