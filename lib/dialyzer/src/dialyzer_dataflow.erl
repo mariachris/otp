@@ -696,9 +696,9 @@ handle_apply_or_call([{TypeOfApply, {Fun, Sig, Contr, LocalRet}}|Left],
           end,
         case DLDetection of
           true ->
-	    CurrFun = dialyzer_races:get_curr_fun(Races),
-	    dialyzer_deadlocks:store_call(Fun, CurrFun, Args, ArgTypes,
-					  {File, Line}, State1);
+            CurrFun = dialyzer_races:get_curr_fun(Races),
+	    dialyzer_deadlocks:store_call(Fun, ArgTypes, Args, {File, Line},
+                                          CurrFun, State1);
           false -> State1
         end;
       false -> State

@@ -38,6 +38,10 @@
          filter_parents/3, fixup_race_backward/5, get_var_label/1,
          race_var_map/4, race_var_map_clauses/2, race_var_map_guard/5]).
 
+%% Utilities also used by the deadlock analysis
+
+-export([translate/5]).
+
 %% Record Interfaces
 
 -export([beg_clause_new/3, cleanup/1, end_case_new/1, end_clause_new/3,
@@ -2837,6 +2841,11 @@ debug(_S, _L) ->
 drop_last([]) -> [];
 drop_last([_]) -> [];
 drop_last([H|T]) -> [H|drop_last(T)].
+
+-spec translate(mfa_or_funlbl(), [erl_types:erl_type()], [core_vars()],
+                dialyzer_dataflow:state(), mfa_or_funlbl()) ->
+      {mfa_or_funlbl(), [erl_types:erl_type()],
+       [core_vars()], dialyzer_dataflow:state()}.      
 
 translate(InpFun, InpArgTypes, InpArgs, InpState, CurrFun) ->
   Callgraph = dialyzer_dataflow:state__get_callgraph(InpState),

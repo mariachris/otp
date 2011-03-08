@@ -62,48 +62,19 @@
 %%%
 %%% ===========================================================================
 
--spec store_call(mfa_or_funlbl(), mfa_or_funlbl(),
-                 [dialyzer_races:core_vars()],
-                 [erl_types:erl_type()], file_line(),
-                 dialyzer_dataflow:state()) ->
+-spec store_call(mfa_or_funlbl(), [erl_types:erl_type()],
+                 [dialyzer_races:core_vars()], file_line(),
+                 mfa_or_funlbl(), dialyzer_dataflow:state()) ->
       dialyzer_dataflow:state().
 
-store_call(Fun, CurrFun, Args, ArgTypes, {File, Line}, InpState) ->
-
-  %% EXPERIMENTAL: Turn a behaviour's API call into a call to the
-  %%               respective callback module's function.
-
-  BehApiDict = dialyzer_dataflow:state__get_behaviour_api_dict(InpState),
-  CallbackRefList = dialyzer_dataflow:state__get_callback_ref_list(InpState),
-  {RealFun, State} =
-    case dialyzer_behaviours:translate_behaviour_api_call(Fun, ArgTypes, Args,
-							  BehApiDict,
-							  CallbackRefList,
-							  CurrFun) of
-      plain_call ->
-	{Fun, InpState};
-      {{TransFun, _TransArgTypes, _TransArgs}, NewCallbackRefList, Edge} ->
-	Callgraph = dialyzer_dataflow:state__get_callgraph(InpState),
-	Edges =
-	  dialyzer_callgraph:get_translations(Callgraph),
-	NewEdges = case lists:member(Edge, Edges) of
-		     false -> [Edge|Edges];
-		     true  -> Edges
-		   end,
-	NewCallgraph =
-	  dialyzer_callgraph:put_translations(NewEdges, Callgraph),
-	TempState0 = dialyzer_dataflow:state__put_callback_ref_list(
-		       NewCallbackRefList,
-		       dialyzer_dataflow:state__put_callgraph(
-			 NewCallgraph, InpState)),
-	{TransFun, TempState0}
-    end,
-
-  case Fun of
+store_call(InpFun, InpArgTypes, InpArgs, {File, Line}, CurrFun, InpState) ->
+  {Fun, _ArgTypes, _Args, State} =
+    dialyzer_races:translate(InpFun, InpArgTypes, InpArgs, InpState, CurrFun),
+  case InpFun of
     {gen_server, call, A} when A =:= 2 orelse A =:= 3 ->
       CleanState = dialyzer_dataflow:state__records_only(State),
-      state__renew_tags(#dl{mfa1 = Fun, mfa2 = RealFun,
-                            args = Args, arg_types = ArgTypes,
+      state__renew_tags(#dl{mfa1 = InpFun, mfa2 = Fun,
+                            args = InpArgs, arg_types = InpArgTypes,
                             state = CleanState,
                             file_line = {File, Line}},
                         State);
