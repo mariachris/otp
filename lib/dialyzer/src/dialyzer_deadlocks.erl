@@ -121,12 +121,16 @@ warn_about_cycles([#dl{mfa2 = MFA} = Tag|Tags], Digraph, State) ->
 %%%
 %%% ===========================================================================
 
-state__renew_tags(Tag, State) ->
+state__renew_tags(#dl{file_line = FileLine} = Tag, State) ->
   Callgraph = dialyzer_dataflow:state__get_callgraph(State),
   Tags = dialyzer_callgraph:get_deadlocks(Callgraph),
-  NewTags = [Tag|Tags],
-  NewCallgraph = dialyzer_callgraph:put_deadlocks(NewTags, Callgraph),
-  dialyzer_dataflow:state__put_callgraph(NewCallgraph, State).
+  case lists:keymember(FileLine, 7, Tags) of
+    true -> State;
+    false ->
+      NewTags = [Tag|Tags],
+      NewCallgraph = dialyzer_callgraph:put_deadlocks(NewTags, Callgraph),
+      dialyzer_dataflow:state__put_callgraph(NewCallgraph, State)
+  end.
 
 %%% ===========================================================================
 %%%
