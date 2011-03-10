@@ -70,15 +70,24 @@
 store_call(InpFun, InpArgTypes, InpArgs, {File, Line}, CurrFun, InpState) ->
   {Fun, _ArgTypes, _Args, State} =
     dialyzer_races:translate(InpFun, InpArgTypes, InpArgs, InpState, CurrFun),
-  case InpFun of
-    {gen_server, call, A} when A =:= 2 orelse A =:= 3 ->
+  AddTag =
+    case InpFun of
+      {gen_server, call, 2} -> true;
+      {gen_server, call, 3} ->
+        Timeout = lists:nth(3, InpArgTypes),
+        Infinity = erl_types:t_atom('infinity'),
+        Infinity =:= Timeout;
+      _Other -> false
+    end,
+  case AddTag of
+    true ->
       CleanState = dialyzer_dataflow:state__records_only(State),
       state__renew_tags(#dl{mfa1 = InpFun, mfa2 = Fun,
                             args = InpArgs, arg_types = InpArgTypes,
                             state = CleanState,
                             file_line = {File, Line}},
                         State);
-    _Other -> State
+    false -> State
   end.
 
 -spec deadlock(dialyzer_dataflow:state()) -> dialyzer_dataflow:state().
