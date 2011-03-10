@@ -77,6 +77,7 @@ store_call(InpFun, InpArgTypes, InpArgs, {File, Line}, CurrFun, InpState) ->
         Timeout = lists:nth(3, InpArgTypes),
         Infinity = erl_types:t_atom('infinity'),
         Infinity =:= Timeout;
+      {gen_server, multi_call, 2} -> true;
       _Other -> false
     end,
   case AddTag of
