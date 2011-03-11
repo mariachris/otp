@@ -98,25 +98,25 @@
 %%		   whenever applicable.
 %%-----------------------------------------------------------------------------
 
--record(callgraph, {digraph         = digraph:new()           :: digraph(),
-                    esc	            = sets:new()              :: set(),
-                    name_map	    = dict:new()              :: dict(),
-                    rev_name_map    = dict:new()              :: dict(),
-                    postorder       = []	                     :: [scc()],
-                    rec_var_map     = dict:new()              :: dict(),
-                    self_rec	    = sets:new()              :: set(),
-                    calls           = dict:new()              :: dict(),
-                    public_tables   = []                      :: [label()],
-                    named_tables    = []                      :: [string()],
-                    deadlocks       = []                      :: dialyzer_deadlocks:dls(),
-                    msgs            = dialyzer_messages:new() :: dialyzer_messages:msgs(),
-                    race_detection  = false                   :: boolean(),
-                    dl_detection    = false                   :: boolean(),
-                    msg_analysis    = false                   :: boolean(),
-                    beh_translation = false                   :: boolean(),
-		    translations    = []                      :: [callgraph_edge()],
-		    beh_api_calls   = []                      :: [{mfa(), mfa()}],
-                    beh_edges       = []                      :: [callgraph_edge()]}).
+-record(callgraph, {digraph         = digraph:new()            :: digraph(),
+                    esc	            = sets:new()               :: set(),
+                    name_map	    = dict:new()               :: dict(),
+                    rev_name_map    = dict:new()               :: dict(),
+                    postorder       = []	               :: [scc()],
+                    rec_var_map     = dict:new()               :: dict(),
+                    self_rec	    = sets:new()               :: set(),
+                    calls           = dict:new()               :: dict(),
+                    public_tables   = []                       :: [label()],
+                    named_tables    = []                       :: [string()],
+                    deadlocks       = dialyzer_deadlocks:new() :: dialyzer_deadlocks:dls(),
+                    msgs            = dialyzer_messages:new()  :: dialyzer_messages:msgs(),
+                    race_detection  = false                    :: boolean(),
+                    dl_detection    = false                    :: boolean(),
+                    msg_analysis    = false                    :: boolean(),
+                    beh_translation = false                    :: boolean(),
+		    translations    = []                       :: [callgraph_edge()],
+		    beh_api_calls   = []                       :: [{mfa(), mfa()}],
+                    beh_edges       = []                       :: [callgraph_edge()]}).
 
 %% Exported Types
 

@@ -29,7 +29,7 @@
 
 %% Deadlock Analysis
 
--export([store_call/6, deadlock/1]).
+-export([new/0, store_call/6, deadlock/1]).
 
 -export_type([dls/0]).
 
@@ -61,6 +61,10 @@
 %%%  Deadlock Analysis
 %%%
 %%% ===========================================================================
+
+-spec new() -> dls().
+
+new() -> [].
 
 -spec store_call(mfa_or_funlbl(), [erl_types:erl_type()],
                  [dialyzer_races:core_vars()], file_line(),
