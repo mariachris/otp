@@ -104,20 +104,20 @@ store_call(InpFun, InpArgTypes, InpArgs, {File, Line}, CurrFun, InpState) ->
 
 deadlock(State) ->
   Callgraph = dialyzer_dataflow:state__get_callgraph(State),
-  Digraph = dialyzer_callgraph:get_digraph(Callgraph),
+  BehDigraph = dialyzer_callgraph:get_beh_digraph(Callgraph),
   Tags = dialyzer_callgraph:get_deadlocks(Callgraph),
-  warn_about_cycles(Tags, Digraph, State).
+  warn_about_cycles(Tags, BehDigraph, State).
 
-warn_about_cycles([], _Digraph, State) ->
+warn_about_cycles([], _BehDigraph, State) ->
   State;
-warn_about_cycles([#dl{mfa2 = MFA} = Tag|Tags], Digraph, State) ->
+warn_about_cycles([#dl{mfa2 = MFA} = Tag|Tags], BehDigraph, State) ->
   {NewTags, NewState} =
-    case digraph:get_cycle(Digraph, MFA) of
+    case digraph:get_cycle(BehDigraph, MFA) of
       false -> {Tags, State};
       [MFA|_SyncMFAs] ->
         {Tags, dialyzer_dataflow:state__add_warning(get_dl_warn(Tag), State)}
     end,
-  warn_about_cycles(NewTags, Digraph, NewState).
+  warn_about_cycles(NewTags, BehDigraph, NewState).
 
 %%% ===========================================================================
 %%%
