@@ -736,8 +736,8 @@ do_print_ext_types(Output, [{M,F,A}|T], Before) ->
 do_print_ext_types(_, [], _) ->
   ok.
 
-%%print_unknown_behaviours(#cl_state{report_mode = quiet}) ->
-%%  ok;
+print_unknown_behaviours(#cl_state{report_mode = quiet}) ->
+  ok;
 print_unknown_behaviours(#cl_state{output = Output,
 				   external_calls = Calls,
 				   external_types = Types,
