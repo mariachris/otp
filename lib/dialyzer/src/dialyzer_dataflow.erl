@@ -313,10 +313,11 @@ analyze_module(Tree, Plt, Callgraph, Records, GetWarnings) ->
       State3 = state__set_warning_mode(State2),
       State4 = analyze_loop(State3),
       TempCG = dialyzer_behaviours:translate_callgraph(State4#state.callgraph),
-      St = dialyzer_messages:msg(dialyzer_deadlocks:deadlock(
-              dialyzer_races:race(State4#state{callgraph = TempCG}))),
-      OriginalCG = dialyzer_callgraph:clear_behaviour_edges(St#state.callgraph),
-      St#state{callgraph = OriginalCG};
+      State5 = dialyzer_messages:msg(
+                 dialyzer_races:race(State4#state{callgraph = TempCG})),
+      OrigCG = dialyzer_callgraph:clear_behaviour_edges(State5#state.callgraph),
+      State6 = State5#state{callgraph = OrigCG},
+      dialyzer_deadlocks:deadlock(State6);
     false -> State2
   end.
 

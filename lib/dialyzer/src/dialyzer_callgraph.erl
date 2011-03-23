@@ -118,6 +118,7 @@
 		    translations    = []                       :: [callgraph_edge()],
 		    beh_api_calls   = []                       :: [{mfa(), mfa()}],
                     beh_edges       = []                       :: [callgraph_edge()],
+                    %% for deadlock detection only!
                     beh_digraph     = digraph:new()            :: digraph()}).
 
 %% Exported Types
@@ -781,9 +782,7 @@ put_behaviour_translation(Value, Callgraph) ->
 
 -spec clear_behaviour_edges(callgraph()) -> callgraph().
 
-clear_behaviour_edges(#callgraph{translations = Trans, beh_edges = BehEdges,
-                                 beh_digraph = BehDG, digraph = DG} = CG) ->
-  digraph:del_edges(BehDG, Trans),
+clear_behaviour_edges(#callgraph{beh_edges = BehEdges, digraph = DG} = CG) ->
   digraph:del_edges(DG, BehEdges),
   CG#callgraph{beh_edges = []}.
 
@@ -793,15 +792,19 @@ add_behaviour_edges([], CG) ->
   CG;
 add_behaviour_edges(Edges, #callgraph{beh_digraph = BehDG, beh_edges = BehEdges,
                                       digraph = DG} = CG) ->
-  Filter = fun(E) -> case digraph:edge(DG, E) of
+  DGEdges = filter_edges(Edges, DG),
+  CG1 = add_edges(DGEdges, CG),
+  BehDGEdges = filter_edges(Edges, BehDG),
+  CG1#callgraph{beh_edges = DGEdges ++ BehEdges,
+                beh_digraph = digraph_add_edges(BehDGEdges, BehDG)}.
+
+filter_edges(Edges, Graph) ->
+  Filter = fun(E) -> case digraph:edge(Graph, E) of
                        false -> true;
                        _ -> false
                      end
            end,
-  NonExistentEdges = [E || E <- Edges, Filter(E)],
-  CG1 = add_edges(NonExistentEdges, CG),
-  CG1#callgraph{beh_edges = NonExistentEdges ++ BehEdges,
-                beh_digraph = digraph_add_edges(Edges, BehDG)}.
+  [E || E <- Edges, Filter(E)].
 
 -spec put_behaviour_api_calls([{mfa(), mfa()}], callgraph()) -> callgraph().
 
