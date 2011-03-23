@@ -20,10 +20,10 @@
 
 %%%----------------------------------------------------------------------
 %%% File    : dialyzer_heisenbugs.hrl
-%%% Author  : Maria Christakis <christakismaria@gmail.com>
+%%% Author  : Maria Christakis <mchrista@softlab.ntua.gr>
 %%% Description : Header file for concurrency analysis
 %%%
-%%% Created : 15 Feb 2010 by Maria Christakis <christakismaria@gmail.com>
+%%% Created : 15 Feb 2010 by Maria Christakis <mchrista@softlab.ntua.gr>
 %%%----------------------------------------------------------------------
 
 %%% ===========================================================================

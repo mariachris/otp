@@ -20,10 +20,10 @@
 
 %%%----------------------------------------------------------------------
 %%% File    : dialyzer_races.erl
-%%% Author  : Maria Christakis <christakismaria@gmail.com>
+%%% Author  : Maria Christakis <mchrista@softlab.ntua.gr>
 %%% Description : Utility functions for race condition detection
 %%%
-%%% Created : 21 Nov 2008 by Maria Christakis <christakismaria@gmail.com>
+%%% Created : 21 Nov 2008 by Maria Christakis <mchrista@softlab.ntua.gr>
 %%%----------------------------------------------------------------------
 -module(dialyzer_races).
 

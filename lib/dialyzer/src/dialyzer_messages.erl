@@ -20,10 +20,10 @@
 
 %%%----------------------------------------------------------------------
 %%% File    : dialyzer_messages.erl
-%%% Author  : Maria Christakis <christakismaria@gmail.com>
+%%% Author  : Maria Christakis <mchrista@softlab.ntua.gr>
 %%% Description : Utility functions for message analysis
 %%%
-%%% Created : 12 Feb 2010 by Maria Christakis <christakismaria@gmail.com>
+%%% Created : 12 Feb 2010 by Maria Christakis <mchrista@softlab.ntua.gr>
 %%%----------------------------------------------------------------------
 -module(dialyzer_messages).
 
