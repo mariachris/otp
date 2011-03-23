@@ -27,8 +27,7 @@
 %%%-------------------------------------------------------------------
 -module(dialyzer_callgraph).
 
--export([add_edges/2,
-	 all_nodes/1,
+-export([all_nodes/1,
 	 delete/1,
 	 finalize/1,
 	 is_escaping/2,
@@ -189,20 +188,7 @@ is_self_rec(MfaOrLabel, #callgraph{self_rec = SelfRecs}) ->
 -spec is_escaping(label(), callgraph()) -> boolean().
 
 is_escaping(Label, #callgraph{esc = Esc}) when is_integer(Label) ->
-  sets:is_element(Label, Esc).  
-
--spec add_edges([callgraph_edge()], callgraph()) -> callgraph().
-
-add_edges([], CG) ->
-  CG;
-add_edges(Edges, #callgraph{digraph = Callgraph} = CG) ->
-  CG#callgraph{digraph = digraph_add_edges(Edges, Callgraph)}.
-
--spec add_edges([callgraph_edge()], [mfa_or_funlbl()], callgraph()) -> callgraph().
-
-add_edges(Edges, MFAs, #callgraph{digraph = DG} = CG) ->
-  DG1 = digraph_confirm_vertices(MFAs, DG),
-  add_edges(Edges, CG#callgraph{digraph = DG1}).
+  sets:is_element(Label, Esc).
 
 -spec take_scc(callgraph()) -> 'none' | {'ok', scc(), callgraph()}.
 
@@ -214,8 +200,7 @@ take_scc(#callgraph{postorder = []}) ->
 -spec remove_external(callgraph()) -> {callgraph(), [tuple()]}.
 
 remove_external(#callgraph{digraph = DG} = CG) ->
-  {NewDG, External} = digraph_remove_external(DG),
-  {CG#callgraph{digraph = NewDG}, External}.
+  {CG, digraph_remove_external(DG)}.
 
 -spec non_local_calls(callgraph()) -> mfa_calls().
 
@@ -354,7 +339,8 @@ module_postorder_from_funs(Funs, #callgraph{digraph = DG} = CG) ->
 
 -spec scan_core_tree(cerl:c_module(), callgraph()) -> callgraph().
 
-scan_core_tree(Tree, #callgraph{calls = OldCalls,
+scan_core_tree(Tree, #callgraph{digraph = Digraph,
+                                calls = OldCalls,
 				esc = OldEsc,
 				name_map = OldNameMap,
 				rec_var_map = OldRecVarMap, 
@@ -400,13 +386,14 @@ scan_core_tree(Tree, #callgraph{calls = OldCalls,
   NewNamedEdges1 =
     [E || {From, To} = E <- NamedEdges1, From =/= top, To =/= top],
   NamedEdges3 = NewNamedEdges1 ++ NewNamedEdges2,
-  CG1 = add_edges(NamedEdges3, Names3, CG),
-  CG1#callgraph{calls = NewCalls,
-                esc = NewEsc,
-                name_map = NewNameMap,
-                rec_var_map = NewRecVarMap, 
-                rev_name_map = NewRevNameMap,
-                self_rec = SelfRecs}.
+  digraph_confirm_vertices(Names3, Digraph),
+  digraph_add_edges(NamedEdges3, Digraph),
+  CG#callgraph{calls = NewCalls,
+               esc = NewEsc,
+               name_map = NewNameMap,
+               rec_var_map = NewRecVarMap, 
+               rev_name_map = NewRevNameMap,
+               self_rec = SelfRecs}.
 
 build_maps(Tree, RecVarMap, NameMap, RevNameMap) ->
   %% We only care about the named (top level) functions. The anonymous
@@ -501,8 +488,8 @@ get_label(T) ->
 
 digraph_add_edges([{From, To}|Left], DG) ->
   digraph_add_edges(Left, digraph_add_edge(From, To, DG));
-digraph_add_edges([], DG) ->
-  DG.
+digraph_add_edges([], _DG) ->
+  ok.
 
 digraph_add_edge(From, To, DG) ->
   case digraph:vertex(DG, From) of
@@ -524,8 +511,7 @@ digraph_confirm_vertices([], DG) ->
   
 digraph_remove_external(DG) ->
   Vertices = digraph:vertices(DG),
-  Unconfirmed = remove_unconfirmed(Vertices, DG),
-  {DG, Unconfirmed}.
+  remove_unconfirmed(Vertices, DG).
 
 remove_unconfirmed(Vertexes, DG) ->
   remove_unconfirmed(Vertexes, DG, []).
@@ -793,10 +779,10 @@ add_behaviour_edges([], CG) ->
 add_behaviour_edges(Edges, #callgraph{beh_digraph = BehDG, beh_edges = BehEdges,
                                       digraph = DG} = CG) ->
   DGEdges = filter_edges(Edges, DG),
-  CG1 = add_edges(DGEdges, CG),
+  digraph_add_edges(DGEdges, DG),
   BehDGEdges = filter_edges(Edges, BehDG),
-  CG1#callgraph{beh_edges = DGEdges ++ BehEdges,
-                beh_digraph = digraph_add_edges(BehDGEdges, BehDG)}.
+  digraph_add_edges(BehDGEdges, BehDG),
+  CG#callgraph{beh_edges = DGEdges ++ BehEdges}.
 
 filter_edges(Edges, Graph) ->
   Filter = fun(E) -> case digraph:edge(Graph, E) of
