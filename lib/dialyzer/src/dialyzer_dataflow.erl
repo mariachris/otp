@@ -109,10 +109,7 @@
 		module               :: module(),
 		behaviour_api_dict =
 		  dialyzer_behaviours:new_behaviour_api_dict() ::
-		    dialyzer_behaviours:behaviour_api_dict(),
-		callback_ref_list =
-		  dialyzer_behaviours:new_callback_ref_list() ::
-		    dialyzer_behaviours:callback_ref_list()}).
+		    dialyzer_behaviours:behaviour_api_dict()}).
 
 %% Exported Types
 
@@ -124,7 +121,8 @@
                    dialyzer_callgraph:callgraph(), dict(), set()) ->
 	{[dial_warning()], dict(), [label()], [string()],
          dialyzer_deadlocks:dls(), dialyzer_messages:msgs(),
-	 [dialyzer_callgraph:callgraph_edge()]}.
+	 [dialyzer_callgraph:callgraph_edge()],
+         dialyzer_behaviours:callback_ref_list()}.
 
 get_warnings(Tree, Plt, Callgraph, Records, NoWarnUnused) ->
   State1 = analyze_module(Tree, Plt, Callgraph, Records, true),
@@ -138,13 +136,14 @@ get_warnings(Tree, Plt, Callgraph, Records, NoWarnUnused) ->
    dialyzer_callgraph:get_named_tables(Callgraph1),
    dialyzer_callgraph:get_deadlocks(Callgraph1),
    dialyzer_callgraph:get_msgs(Callgraph1),
-   dialyzer_callgraph:get_translations(Callgraph1)}.
+   dialyzer_callgraph:get_translations(Callgraph1),
+   dialyzer_callgraph:get_callback_ref_list(Callgraph1)}.
 
 -spec get_fun_types(cerl:c_module(), dialyzer_plt:plt(),
                     dialyzer_callgraph:callgraph(), dict()) ->
 	{dict(), [label()], [string()], dialyzer_deadlocks:dls(),
-         dialyzer_messages:msgs(),[dialyzer_callgraph:callgraph_edge()]}.
-
+         dialyzer_messages:msgs(), [dialyzer_callgraph:callgraph_edge()],
+         dialyzer_behaviours:callback_ref_list()}.
 
 get_fun_types(Tree, Plt, Callgraph, Records) ->
   State = analyze_module(Tree, Plt, Callgraph, Records, false),
@@ -157,7 +156,8 @@ get_fun_types(Tree, Plt, Callgraph, Records) ->
    dialyzer_callgraph:get_named_tables(Callgraph1),
    dialyzer_callgraph:get_deadlocks(Callgraph1),
    Msgs1,
-   dialyzer_callgraph:get_translations(Callgraph1)}.
+   dialyzer_callgraph:get_translations(Callgraph1),
+   dialyzer_callgraph:get_callback_ref_list(Callgraph1)}.
 
 %%--------------------------------------------------------------------
 
@@ -3491,15 +3491,18 @@ state__put_behaviour_api_dict(BehApiDict, State) ->
 -spec state__get_callback_ref_list(state()) ->
       dialyzer_behaviours:callback_ref_list().
 
-state__get_callback_ref_list(#state{callback_ref_list = CallbackRefList}) ->
-  CallbackRefList.
+state__get_callback_ref_list(#state{callgraph = Callgraph}) ->
+  dialyzer_callgraph:get_callback_ref_list(Callgraph).
 
 -spec state__put_callback_ref_list(dialyzer_behaviours:callback_ref_list(),
 				   state()) ->
       state().
 
-state__put_callback_ref_list(CallbackRefList, State) ->
-  State#state{callback_ref_list = CallbackRefList}.
+state__put_callback_ref_list(CallbackRefList,
+                             #state{callgraph = Callgraph} = State) ->
+  State#state{callgraph =
+              dialyzer_callgraph:put_callback_ref_list(CallbackRefList,
+                                                       Callgraph)}.
 
 %%% ===========================================================================
 %%%

@@ -43,7 +43,7 @@
 	 module_postorder_from_funs/2,
 	 new/0,
 	 in_neighbours/2,
-	 renew_heisen_info/6,
+	 renew_heisen_info/7,
 	 reset_from_funs/2,
 	 scan_core_tree/2,
 	 strip_module_deps/2,
@@ -65,6 +65,7 @@
          %% behaviours
          put_behaviour_api_calls/2, get_behaviour_api_calls/1,
          put_behaviour_translation/2, get_behaviour_translation/1,
+         put_callback_ref_list/2, get_callback_ref_list/1,
          get_beh_digraph/1, add_behaviour_edges/1,
          clear_behaviour_edges/1, amend_beh_digraph/1]).
 
@@ -118,7 +119,8 @@
 		    beh_api_calls   = []                       :: [{mfa(), mfa()}],
                     beh_edges       = []                       :: [callgraph_edge()],
                     %% for deadlock detection only!
-                    beh_digraph     = digraph:new()            :: digraph()}).
+                    beh_digraph     = digraph:new()            :: digraph(),
+                    callback_ref_list = dialyzer_behaviours:new_callback_ref_list() :: dialyzer_behaviours:callback_ref_list()}).
 
 %% Exported Types
 
@@ -226,15 +228,18 @@ find_non_local_calls([], Set) ->
 
 -spec renew_heisen_info(callgraph(), [label()], [string()],
                         dialyzer_deadlocks:dls(), dialyzer_messages:msgs(),
-			[callgraph_edge()]) ->
+			[callgraph_edge()],
+                        dialyzer_behaviours:callback_ref_list()) ->
   callgraph().
 
-renew_heisen_info(CG, PublicTables, NamedTables, DLs, Msgs, Translations) ->
+renew_heisen_info(CG, PublicTables, NamedTables, DLs, Msgs, Translations,
+                  CallbackRefList) ->
   CG#callgraph{public_tables = PublicTables,
                named_tables = NamedTables,
                deadlocks = DLs,
                msgs = Msgs,
-	       translations = Translations}.
+	       translations = Translations,
+               callback_ref_list = CallbackRefList}.
 
 %%----------------------------------------------------------------------
 %% Handling of modules & SCCs
@@ -642,11 +647,6 @@ get_deadlock_detection(#callgraph{dl_detection = DD}) ->
 get_deadlocks(#callgraph{deadlocks = Deadlocks}) ->
   Deadlocks.
 
--spec get_translations(callgraph()) -> [callgraph_edge()].
-
-get_translations(#callgraph{translations = Translations}) ->
-  Translations.
-
 -spec get_digraph(callgraph()) -> digraph().
 
 get_digraph(#callgraph{digraph = Digraph}) ->
@@ -692,11 +692,6 @@ put_deadlock_detection(DeadlockDetection, Callgraph) ->
 put_deadlocks(Deadlocks, Callgraph) ->
   Callgraph#callgraph{deadlocks = Deadlocks}.
 
--spec put_translations([callgraph_edge()], callgraph()) -> callgraph().
-
-put_translations(Translations, Callgraph) ->
-  Callgraph#callgraph{translations = Translations}.
-
 -spec put_digraph(digraph(), callgraph()) -> callgraph().
 
 put_digraph(Digraph, Callgraph) ->
@@ -727,33 +722,6 @@ put_public_tables(PublicTables, Callgraph) ->
 put_race_detection(RaceDetection, Callgraph) ->
   Callgraph#callgraph{race_detection = RaceDetection}.
 
-%%=============================================================================
-%% Utilities for 'dot'
-%%=============================================================================
-
--spec to_dot(callgraph(), file:filename()) -> 'ok'.
-
-to_dot(#callgraph{digraph = DG, esc = Esc} = CG, File) ->
-  Fun = fun(L) ->
-	    case lookup_name(L, CG) of
-	      error -> L;
-	      {ok, Name} -> Name
-	    end
-	end,
-  Escaping = [{Fun(L), {color, red}} 
-	      || L <- sets:to_list(Esc), L =/= external],
-  Vertices = digraph_edges(DG),
-  hipe_dot:translate_list(Vertices, File, "CG", Escaping).
-
--spec to_ps(callgraph(), file:filename(), string()) -> 'ok'.
-
-to_ps(#callgraph{} = CG, File, Args) ->
-  Dot_File = filename:rootname(File) ++ ".dot",
-  to_dot(CG, Dot_File),
-  Command = io_lib:format("dot -Tps ~s -o ~s ~s", [Args, File, Dot_File]),
-  _ = os:cmd(Command),
-  ok.
-
 %-------------------------------------------------------------------------------
 
 -spec get_behaviour_translation(callgraph()) -> boolean().
@@ -765,6 +733,43 @@ get_behaviour_translation(Callgraph) ->
 
 put_behaviour_translation(Value, Callgraph) ->
   Callgraph#callgraph{beh_translation=Value}.
+
+-spec get_translations(callgraph()) -> [callgraph_edge()].
+
+get_translations(#callgraph{translations = Translations}) ->
+  Translations.
+
+-spec put_translations([callgraph_edge()], callgraph()) -> callgraph().
+
+put_translations(Translations, Callgraph) ->
+  Callgraph#callgraph{translations = Translations}.
+
+-spec get_behaviour_api_calls(callgraph()) -> [{mfa(), mfa()}].
+
+get_behaviour_api_calls(Callgraph) ->
+  Callgraph#callgraph.beh_api_calls.
+
+-spec calls_behaviour_filter(callgraph(),
+			     dialyzer_behaviours:behaviour_api_dict()) ->
+				fun((label()) -> boolean()).
+
+-spec put_behaviour_api_calls([{mfa(), mfa()}], callgraph()) -> callgraph().
+
+put_behaviour_api_calls(Calls, Callgraph) ->
+  Callgraph#callgraph{beh_api_calls = Calls}.
+
+-spec get_callback_ref_list(callgraph()) ->
+      dialyzer_behaviours:callback_ref_list().
+
+get_callback_ref_list(#callgraph{callback_ref_list = CallbackRefList}) ->
+  CallbackRefList.
+
+-spec put_callback_ref_list(dialyzer_behaviours:callback_ref_list(),
+                            callgraph()) ->
+      callgraph().
+
+put_callback_ref_list(CallbackRefList, Callgraph) ->
+  Callgraph#callgraph{callback_ref_list = CallbackRefList}.
 
 -spec clear_behaviour_edges(callgraph()) -> callgraph().
 
@@ -820,20 +825,6 @@ add_paths([{Caller, _Callee}|Ts], Callback, DG, BehDG) ->
   end,
   add_paths(Ts, Callback, DG, BehDG).
 
--spec put_behaviour_api_calls([{mfa(), mfa()}], callgraph()) -> callgraph().
-
-put_behaviour_api_calls(Calls, Callgraph) ->
-  Callgraph#callgraph{beh_api_calls = Calls}.
-
--spec get_behaviour_api_calls(callgraph()) -> [{mfa(), mfa()}].
-
-get_behaviour_api_calls(Callgraph) ->
-  Callgraph#callgraph.beh_api_calls.
-
--spec calls_behaviour_filter(callgraph(),
-			     dialyzer_behaviours:behaviour_api_dict()) ->
-				fun((label()) -> boolean()).
-
 calls_behaviour_filter(#callgraph{beh_api_calls = BehApiCalls} = Callgraph,
 		       BehaviourAPIDict) ->
   RegisteringAPIs = dialyzer_behaviours:get_registering_apis(BehaviourAPIDict),
@@ -847,3 +838,30 @@ calls_behaviour_filter(#callgraph{beh_api_calls = BehApiCalls} = Callgraph,
 	  end
       end
   end.
+
+%%=============================================================================
+%% Utilities for 'dot'
+%%=============================================================================
+
+-spec to_dot(callgraph(), file:filename()) -> 'ok'.
+
+to_dot(#callgraph{digraph = DG, esc = Esc} = CG, File) ->
+  Fun = fun(L) ->
+	    case lookup_name(L, CG) of
+	      error -> L;
+	      {ok, Name} -> Name
+	    end
+	end,
+  Escaping = [{Fun(L), {color, red}} 
+	      || L <- sets:to_list(Esc), L =/= external],
+  Vertices = digraph_edges(DG),
+  hipe_dot:translate_list(Vertices, File, "CG", Escaping).
+
+-spec to_ps(callgraph(), file:filename(), string()) -> 'ok'.
+
+to_ps(#callgraph{} = CG, File, Args) ->
+  Dot_File = filename:rootname(File) ++ ".dot",
+  to_dot(CG, Dot_File),
+  Command = io_lib:format("dot -Tps ~s -o ~s ~s", [Args, File, Dot_File]),
+  _ = os:cmd(Command),
+  ok.

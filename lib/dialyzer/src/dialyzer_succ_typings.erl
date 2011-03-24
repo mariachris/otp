@@ -144,7 +144,8 @@ get_warnings_from_modules([M|Ms], State, DocPlt, Acc) when is_atom(M) ->
   %% Check if there are contracts for functions that do not exist
   _Warnings1 =
     dialyzer_contracts:contracts_without_fun(Contracts, AllFuns, Callgraph),
-  {RawWarnings2, FunTypes, PublicTables, NamedTables, DLs, Msgs, Translations} =
+  {RawWarnings2, FunTypes, PublicTables, NamedTables, DLs, Msgs, Translations,
+   CallbackRefList} =
     dialyzer_dataflow:get_warnings(ModCode, Plt, Callgraph, Records,
                                    NoWarnUnused),
   {_NewAcc, _Warnings2} = postprocess_dataflow_warns(RawWarnings2, State, Acc),
@@ -158,7 +159,7 @@ get_warnings_from_modules([M|Ms], State, DocPlt, Acc) when is_atom(M) ->
   NewCallgraph =
     dialyzer_callgraph:renew_heisen_info(Callgraph, PublicTables,
                                          NamedTables, DLs, Msgs,
-					 Translations),
+					 Translations, CallbackRefList),
   State1 = st__renew_state_calls(NewCallgraph, State),
   get_warnings_from_modules(Ms, State1, NewDocPlt,
                             ?messages([_Warnings1, _Warnings2, _Warnings3|
@@ -234,12 +235,13 @@ refine_one_module(M, State) ->
   AllFuns = collect_fun_info([ModCode]),
   FunTypes = get_fun_types_from_plt(AllFuns, State),
   Records = dialyzer_codeserver:lookup_mod_records(M, CodeServer),
-  {NewFunTypes, PublicTables, NamedTables, DLs, Msgs, Translations} =
+  {NewFunTypes, PublicTables, NamedTables, DLs, Msgs, Translations,
+   CallbackRefList} =
     dialyzer_dataflow:get_fun_types(ModCode, PLT, Callgraph, Records),
   NewCallgraph =
     dialyzer_callgraph:renew_heisen_info(Callgraph, PublicTables,
                                          NamedTables, DLs, Msgs,
-					 Translations),
+					 Translations, CallbackRefList),
   case reached_fixpoint(FunTypes, NewFunTypes) of
     true ->
       State1 = st__renew_state_calls(NewCallgraph, State),
