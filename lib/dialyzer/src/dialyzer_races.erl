@@ -2847,8 +2847,17 @@ drop_last([H|T]) -> [H|drop_last(T)].
       {mfa_or_funlbl(), [erl_types:erl_type()],
        [core_vars()], dialyzer_dataflow:state()}.      
 
-translate(InpFun, InpArgTypes, InpArgs, InpState, CurrFun) ->
+translate(Fun, InpArgTypes, InpArgs, InpState, CurrFun) ->
   Callgraph = dialyzer_dataflow:state__get_callgraph(InpState),
+  InpFun =
+    case is_integer(Fun) of
+      true ->
+        case dialyzer_callgraph:lookup_name(Fun, Callgraph) of
+          error -> Fun;
+          {ok, MFA} -> MFA
+        end;
+      false -> Fun
+    end,
   MsgAnalysis = dialyzer_callgraph:get_msg_analysis(Callgraph),
   debug("IF\t: ~p\nIAT\t: ~p\nIA\t: ~p\n",[InpFun, InpArgTypes, InpArgs]),
   SpawnResult =
