@@ -76,6 +76,7 @@ store_call(InpFun, InpArgTypes, InpArgs, {File, Line}, CurrFun, InpState) ->
     dialyzer_races:translate(InpFun, InpArgTypes, InpArgs, InpState, CurrFun),
   AddTag =
     case InpFun of
+      Fun -> false;
       {gen_server, call, 2} -> true;
       {gen_server, call, 3} -> true;
       {gen_server, multi_call, 2} -> true;
