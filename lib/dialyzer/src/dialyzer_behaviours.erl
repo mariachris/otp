@@ -33,7 +33,7 @@
 -export([new_behaviour_api_dict/0, new_callback_ref_list/0,
          check_callbacks/4, get_behaviours/2, get_behaviour_apis/1,
 	 get_registering_apis/1, translate_behaviour_api_call/6,
-         translatable_behaviours/0, translate_callgraph/1]).
+         translatable_behaviours/0]).
 
 -export_type([behaviour/0, behaviour_api_dict/0, callback_ref_list/0]).
 
@@ -241,13 +241,6 @@ add_reference({Name,CM},CA) ->
     true  -> CA;
     false -> [{Name,CM}|CA]
   end.
-
--spec translate_callgraph(dialyzer_callgraph:callgraph()) ->
-			     dialyzer_callgraph:callgraph().
-
-translate_callgraph(Callgraph) ->
-  DirectCalls = dialyzer_callgraph:get_translations(Callgraph),
-  dialyzer_callgraph:add_behaviour_edges(DirectCalls, Callgraph).
 
 %%--------------------------------------------------------------------
 

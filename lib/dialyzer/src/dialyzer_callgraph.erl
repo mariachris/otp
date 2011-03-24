@@ -65,7 +65,7 @@
          %% behaviours
          put_behaviour_api_calls/2, get_behaviour_api_calls/1,
          put_behaviour_translation/2, get_behaviour_translation/1,
-         get_beh_digraph/1, add_behaviour_edges/2,
+         get_beh_digraph/1, add_behaviour_edges/1,
          clear_behaviour_edges/1]).
 
 -export_type([callgraph/0, callgraph_edge/0]).
@@ -772,7 +772,10 @@ clear_behaviour_edges(#callgraph{beh_edges = BehEdges, digraph = DG} = CG) ->
   digraph:del_edges(DG, BehEdges),
   CG#callgraph{beh_edges = []}.
 
--spec add_behaviour_edges([callgraph_edge()], callgraph()) -> callgraph().
+-spec add_behaviour_edges(callgraph()) -> callgraph().
+
+add_behaviour_edges(#callgraph{translations = Trans} = CG) ->
+  add_behaviour_edges(Trans, CG).
 
 add_behaviour_edges([], CG) ->
   CG;
