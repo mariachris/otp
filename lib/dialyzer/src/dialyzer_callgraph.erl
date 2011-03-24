@@ -66,7 +66,7 @@
          put_behaviour_api_calls/2, get_behaviour_api_calls/1,
          put_behaviour_translation/2, get_behaviour_translation/1,
          get_beh_digraph/1, add_behaviour_edges/1,
-         clear_behaviour_edges/1]).
+         clear_behaviour_edges/1, amend_beh_digraph/1]).
 
 -export_type([callgraph/0, callgraph_edge/0]).
 
@@ -794,6 +794,31 @@ filter_edges(Edges, Graph) ->
                      end
            end,
   [E || E <- Edges, Filter(E)].
+
+-spec amend_beh_digraph(callgraph()) -> 'ok'.
+
+amend_beh_digraph(#callgraph{beh_digraph = BehDG, digraph = DG,
+                             translations = Trans}) ->
+  amend_beh_digraph(Trans, Trans, DG, BehDG).
+
+amend_beh_digraph([], _Trans, _DG, _BehDG) ->
+  ok;
+amend_beh_digraph([{_Caller, Callee}|Ts], Trans, DG, BehDG) ->
+  add_paths(Trans, Callee, DG, BehDG),
+  amend_beh_digraph(Ts, Trans, DG, BehDG).
+
+add_paths([], _Callback, _DG, _BehDG) ->
+  ok;
+add_paths([{Caller, _Callee}|Ts], Callback, DG, BehDG) ->
+  case digraph:edge(BehDG, {Callback, Caller}) of
+    false ->
+      case digraph:get_path(DG, Callback, Caller) of
+        false -> ok;
+        _ -> digraph_add_edge(Callback, Caller, BehDG)
+      end;
+    _ -> ok
+  end,
+  add_paths(Ts, Callback, DG, BehDG).
 
 -spec put_behaviour_api_calls([{mfa(), mfa()}], callgraph()) -> callgraph().
 

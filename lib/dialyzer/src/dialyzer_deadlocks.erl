@@ -98,6 +98,7 @@ store_call(InpFun, InpArgTypes, InpArgs, {File, Line}, CurrFun, InpState) ->
 
 deadlock(State) ->
   Callgraph = dialyzer_dataflow:state__get_callgraph(State),
+  dialyzer_callgraph:amend_beh_digraph(Callgraph),
   BehDigraph = dialyzer_callgraph:get_beh_digraph(Callgraph),
   Tags = dialyzer_callgraph:get_deadlocks(Callgraph),
   warn_about_cycles(Tags, BehDigraph, State).
