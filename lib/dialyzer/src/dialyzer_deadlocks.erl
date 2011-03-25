@@ -31,6 +31,10 @@
 
 -export([new/0, store_call/6, deadlock/1]).
 
+%% Utilities for 'dot'
+
+-export([to_dot/2, to_ps/2, to_pdf/2]).
+
 -export_type([dls/0]).
 
 -include("dialyzer.hrl").
@@ -143,3 +147,35 @@ get_dl_warn(#dl{mfa1 = MFA, args = Args, arg_types = ArgTypes,
   {M, F, _A} = MFA,
   Arguments = dialyzer_dataflow:format_args(Args, ArgTypes, CleanState),
   {?WARN_DEADLOCK, FileLine, {deadlock, [M, F, Arguments]}}.
+
+%%% ===========================================================================
+%%%
+%%%  Utilities for 'dot'
+%%%
+%%% ===========================================================================
+
+-spec to_dot(dialyzer_callgraph:callgraph(), file:filename()) -> 'ok'.
+
+to_dot(CG, File) ->
+  BehDG = dialyzer_callgraph:get_beh_digraph(CG),
+  Vertices = digraph:edges(BehDG),
+  hipe_dot:translate_list(Vertices, File, "CG", []).
+
+-spec to_ps(dialyzer_callgraph:callgraph(), file:filename()) -> 'ok'.
+
+to_ps(CG, File) ->
+  Dot_File = filename:rootname(File) ++ ".dot",
+  to_dot(CG, Dot_File),
+  Command = io_lib:format("dot -Tps -o ~s ~s", [File, Dot_File]),
+  _ = os:cmd(Command),
+  ok.
+
+-spec to_pdf(dialyzer_callgraph:callgraph(), file:filename()) -> 'ok'.
+
+to_pdf(CG, File) ->
+  Dot_File = filename:rootname(File) ++ ".dot",
+  Pdf_File = filename:rootname(File) ++ ".pdf",
+  to_dot(CG, Dot_File),
+  Command = io_lib:format("dot -Tpdf -o ~s ~s", [Pdf_File, Dot_File]),
+  _ = os:cmd(Command),
+  ok.
