@@ -442,7 +442,7 @@ message_to_string({opaque_type_test, [Fun, Opaque]}) ->
 message_to_string({race_condition, [M, F, Args, Reason]}) ->
   io_lib:format("The call ~w:~w~s ~s\n", [M, F, Args, Reason]);
 message_to_string({deadlock, [M, F, Args]}) ->
-  io_lib:format("The call ~w:~w~s will deadlock\n", [M, F, Args]);
+  io_lib:format("The call ~w:~w~s might deadlock\n", [M, F, Args]);
 message_to_string({message_rn, []}) ->
   io_lib:format("No messages are sent to the process\n", []);
 message_to_string({message_ru, [{one, Pat}]}) ->
