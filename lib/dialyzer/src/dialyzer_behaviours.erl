@@ -209,7 +209,8 @@ extract_atom_or_tuple(Cerl, Type) ->
 	  end;
 	false ->
 	  case (erl_types:t_is_tuple(Type) andalso
-		not erl_types:t_is_tuple_set(Type)) of
+		not erl_types:t_is_tuple_set(Type) andalso
+		not (erl_types:t_tuple_sizes(Type) =:= 'unknown')) of
 	    true ->
 	      Args = erl_types:t_tuple_args(Type),
 	      process_tuple_args(Args);
